@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy import text
-from database import db  # your SQLAlchemy session/engine
+from database import db 
 from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
@@ -60,7 +60,7 @@ Message:
 app = FastAPI(title="Portfolio Backend API", version="1.0.0")
 
 # --- CORS configuration ---
-origins = ["https://portfolio-8ce12.web.app"]  # Your frontend URL
+origins = ["https://portfolio-8ce12.web.app"] 
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,14 +92,20 @@ def home():
 def send_message(message: Message):
     """
     Save message to DB and notify admin via email (async).
+    Uses rollback on DB errors.
     """
     try:
-        # --- Save to database ---
+        
         send_message_query = text(
             "INSERT INTO messages_table (name, email, subject, message) VALUES (:name, :email, :subject, :message)"
         )
-        db.execute(send_message_query, message.dict())
-        db.commit()
+        try:
+            db.execute(send_message_query, message.dict())
+            db.commit()
+        except Exception as db_error:
+            db.rollback()  
+            print("Database error:", db_error)
+            raise HTTPException(status_code=500, detail="Database error occurred")
 
         # --- Send email asynchronously ---
         threading.Thread(target=send_email_to_admin, args=(
@@ -111,8 +117,10 @@ def send_message(message: Message):
 
         return {"message": "Message sent successfully"}
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print("Error in send_message endpoint:", e)
+        print("Unexpected error in send_message endpoint:", e)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -120,19 +128,27 @@ def send_message(message: Message):
 def get_messages():
     """
     Retrieve all messages from the database.
+    Handles rollback on errors.
     """
     try:
         get_messages_query = text("SELECT * FROM messages_table")
-        result = db.execute(get_messages_query)
-        messages = result.mappings().fetchall()
+        try:
+            result = db.execute(get_messages_query)
+            messages = result.mappings().fetchall()
+        except Exception as db_error:
+            db.rollback()
+            print("Database error:", db_error)
+            raise HTTPException(status_code=500, detail="Database error occurred")
 
         if not messages:
             return {"message": "No messages yet!"}
 
         return messages
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print("Error in get_messages endpoint:", e)
+        print("Unexpected error in get_messages endpoint:", e)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -150,6 +166,8 @@ def login(login: Login):
         else:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print("Error in login endpoint:", e)
+        print("Unexpected error in login endpoint:", e)
         raise HTTPException(status_code=500, detail="Internal Server Error")
