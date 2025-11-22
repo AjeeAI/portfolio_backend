@@ -47,10 +47,10 @@ def send_email_to_admin(name, email, subject, message):
 
 
 app = FastAPI(title="Portfolio Backend API", version="1.0.0")
-
+origins = ["https://portfolio-8ce12.web.app"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],  # allow all HTTP methods (POST, GET, etc.)
     allow_headers=["*"],  # allow all headers (Authorization, Content-Type, etc.)
