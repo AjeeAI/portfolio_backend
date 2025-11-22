@@ -1,147 +1,155 @@
 import os
+import threading
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from database import db
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy import text
+from database import db  # your SQLAlchemy session/engine
 from dotenv import load_dotenv
-
-
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+# Load environment variables
 load_dotenv()
 
-
-
-def send_email_to_admin(name, email, subject, message):
-    admin_email = os.getenv("admin_email")
-    admin_password = os.getenv("admin_email_password")  # Use App Password
-
-    msg = MIMEMultipart()
-    msg["From"] = admin_email
-    msg["To"] = admin_email
-    msg["Subject"] = f"New Portfolio Message: {subject}"
-
-    body = f"""
-    A new message has been sent from your portfolio site:
-
-    Name: {name}
-    Email: {email}
-    Subject: {subject}
-
-    Message:
-    {message}
+# --- Email sending function ---
+def send_email_to_admin(name: str, email: str, subject: str, message: str):
     """
+    Sends an email to the admin when a new message is received.
+    Uses Gmail SMTP with TLS and App Password.
+    """
+    try:
+        admin_email = os.getenv("admin_email")
+        admin_password = os.getenv("admin_email_password")  # App Password
 
-    msg.attach(MIMEText(body, "plain"))
+        msg = MIMEMultipart()
+        msg["From"] = admin_email
+        msg["To"] = admin_email
+        msg["Subject"] = f"New Portfolio Message: {subject}"
 
-    # Gmail SMTP example
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(admin_email, admin_password)
-        server.send_message(msg)
+        body = f"""
+A new message has been sent from your portfolio site:
+
+Name: {name}
+Email: {email}
+Subject: {subject}
+
+Message:
+{message}
+"""
+        msg.attach(MIMEText(body, "plain"))
+
+        # Connect to Gmail SMTP
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
+            server.starttls()
+            server.login(admin_email, admin_password)
+            server.send_message(msg)
+
+        print(f"Email sent successfully for message from {email}")
+
+    except smtplib.SMTPAuthenticationError:
+        print("SMTP Authentication Error: Check your App Password or email")
+    except smtplib.SMTPConnectError:
+        print("SMTP Connect Error: Could not connect to Gmail SMTP server")
+    except Exception as e:
+        print("Unexpected error while sending email:", e)
 
 
-
-
+# --- FastAPI app ---
 app = FastAPI(title="Portfolio Backend API", version="1.0.0")
-origins = ["https://portfolio-8ce12.web.app"]
+
+# --- CORS configuration ---
+origins = ["https://portfolio-8ce12.web.app"]  # Your frontend URL
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, 
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # allow all HTTP methods (POST, GET, etc.)
-    allow_headers=["*"],  # allow all headers (Authorization, Content-Type, etc.)
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# --- Pydantic models ---
 class Message(BaseModel):
     name: str = Field(..., example="Adesoji Ajijolaoluwa")
-    email: str = Field(..., example="ajee@ai.com")
+    email: EmailStr = Field(..., example="ajee@ai.com")
     subject: str = Field(..., example="Inquiry about your app development services")
     message: str = Field(..., example="Hello. I want to build a mobile app for my business existing website.")
-   
+
+class Login(BaseModel):
+    username: str = Field(..., example="admin")
+    password: str = Field(..., example="admin1234")
+
+
+# --- Routes ---
 @app.get("/")
 def home():
-    return "Welcome to my Portfolio Backend API" 
+    return {"message": "Welcome to my Portfolio Backend API"}
+
 
 @app.post("/api/messages")
-
 def send_message(message: Message):
+    """
+    Save message to DB and notify admin via email (async).
+    """
     try:
-        
-        check_existing_message_query = text(
-           """
-           SELECT * FROM messages_table WHERE email = :email
-           """
-       )
-        
+        # --- Save to database ---
         send_message_query = text(
-            """
-            INSERT INTO messages_table (name, email, subject, message)
-            VALUES (:name, :email, :subject, :message)
-            """
+            "INSERT INTO messages_table (name, email, subject, message) VALUES (:name, :email, :subject, :message)"
         )
-        db.execute(
-            send_message_query,
-            {
-                "name": message.name,
-                "email": message.email,
-                "subject": message.subject,
-                "message": message.message
-            }
-        )
-        
+        db.execute(send_message_query, message.dict())
         db.commit()
-        
-         # NEW: Send email to admin
-        send_email_to_admin(
+
+        # --- Send email asynchronously ---
+        threading.Thread(target=send_email_to_admin, args=(
             message.name,
             message.email,
             message.subject,
             message.message
-        )
+        )).start()
 
         return {"message": "Message sent successfully"}
-    except HTTPException as e:
-        raise e
-    
+
+    except Exception as e:
+        print("Error in send_message endpoint:", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
 @app.get("/api/messages")
 def get_messages():
+    """
+    Retrieve all messages from the database.
+    """
     try:
-        get_Mesages_query = text(
-            """
-            SELECT * FROM messages_table
-            
-            """
-        )
-        
-        result = db.execute(get_Mesages_query)
-        if not result:
-            return "No messages yet!"
+        get_messages_query = text("SELECT * FROM messages_table")
+        result = db.execute(get_messages_query)
         messages = result.mappings().fetchall()
+
+        if not messages:
+            return {"message": "No messages yet!"}
+
         return messages
-    
-        
-    except HTTPException as e:
-        raise e
-    
-    
-class Login(BaseModel):
-    username: str = Field(..., example="admin")
-    password: str = Field(..., example="admin1234")
-    
+
+    except Exception as e:
+        print("Error in get_messages endpoint:", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
 @app.post("/api/login")
 def login(login: Login):
-    try: 
+    """
+    Admin login endpoint using environment variables.
+    """
+    try:
         admin_username = os.getenv("admin_username")
         admin_password = os.getenv("admin_password")
+
         if login.username == admin_username and login.password == admin_password:
             return {"message": "Login successful"}
         else:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-    except HTTPException as e:
-        raise e
-    
+
+    except Exception as e:
+        print("Error in login endpoint:", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
