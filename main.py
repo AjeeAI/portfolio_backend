@@ -61,7 +61,7 @@ app = FastAPI(title="Portfolio Backend API", version="1.0.0")
 
 # --- CORS configuration ---
 origins = ["https://portfolio-8ce12.web.app",
-           "https://portfolio-dashboard-afc4a.web.app/"
+           "https://portfolio-dashboard-afc4a.web.app"
            ] 
 
 app.add_middleware(
