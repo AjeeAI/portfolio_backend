@@ -1,14 +1,24 @@
 from dotenv import load_dotenv
 import os
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import create_engine, text
 
 load_dotenv()
 db_url = f"mysql+pymysql://{os.getenv('dbuser')}:{os.getenv('dbpassword')}@{os.getenv('dbhost')}:{os.getenv('dbport')}/{os.getenv('dbname')}"
 
-engine = create_engine(db_url)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ssl_cert_path = os.path.join(BASE_DIR, "isrgrootx1.pem")
 
-session = sessionmaker(bind=engine)
+engine = create_engine(db_url,
+                       connect_args={
+        "ssl": {
+            "ca": ssl_cert_path
+        }
+    })
+
+session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Base = declarative_base()
+
 
 db = session()
 
