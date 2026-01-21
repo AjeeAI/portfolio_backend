@@ -193,46 +193,22 @@ load_dotenv()
 
 # --- Email sending function (Unchanged) ---
 def send_email_to_admin(name: str, email: str, subject: str, message: str):
-    """
-    Sends an email to the admin. 
-    FastAPI runs this in a threadpool so it won't block the main loop.
-    """
     try:
-        admin_email = os.getenv("admin_email")
-        admin_password = os.getenv("admin_email_password") 
-
-        msg = MIMEMultipart()
-        msg["From"] = admin_email
-        msg["To"] = admin_email
-        msg["Subject"] = f"New Portfolio Message: {subject}"
-
-        body = f"""
-A new message has been sent from your portfolio site:
-
-Name: {name}
-Email: {email}
-Subject: {subject}
-
-Message:
-{message}
-"""
-        msg.attach(MIMEText(body, "plain"))
-
-        # Connect to Gmail SMTP
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
-            server.starttls()
-            server.login(admin_email, admin_password)
-            server.send_message(msg)
-
-        print(f"Email sent successfully for message from {email}")
-
-    except smtplib.SMTPAuthenticationError:
-        print("SMTP Authentication Error: Check your App Password or email")
-    except smtplib.SMTPConnectError:
-        print("SMTP Connect Error: Could not connect to Gmail SMTP server")
+        resend.api_key = os.getenv("RESEND_API_KEY")
+        
+        r = resend.Emails.send({
+            "from": "onboarding@resend.dev", # Default testing domain
+            "to": os.getenv("admin_email"),
+            "subject": f"New Portfolio Message: {subject}",
+            "html": f"""
+            <p><strong>Name:</strong> {name}</p>
+            <p><strong>Email:</strong> {email}</p>
+            <p><strong>Message:</strong><br>{message}</p>
+            """
+        })
+        print("Email sent via API!", r)
     except Exception as e:
-        print("Unexpected error while sending email:", e)
-
+        print("API Error:", e)
 
 # --- FastAPI app ---
 app = FastAPI(title="Portfolio Backend API", version="1.0.0")
