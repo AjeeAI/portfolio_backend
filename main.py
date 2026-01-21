@@ -187,6 +187,7 @@ from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import resend
 
 # Load environment variables
 load_dotenv()
