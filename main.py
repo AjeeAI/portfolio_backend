@@ -198,7 +198,12 @@ def send_email_to_admin(name: str, email: str, subject: str, message: str):
         resend.api_key = os.getenv("RESEND_API_KEY")
         
         r = resend.Emails.send({
-            "from": "onboarding@resend.dev", # Default testing domain
+            # MUST be a verified domain or the testing domain
+            "from": "onboarding@resend.dev", 
+            
+            # This is the magic: When you click reply, it goes to the user's email
+            "reply_to": email, 
+            
             "to": os.getenv("admin_email"),
             "subject": f"New Portfolio Message: {subject}",
             "html": f"""
